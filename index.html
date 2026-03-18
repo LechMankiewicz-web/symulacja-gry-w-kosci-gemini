@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Symulator gry w kości</title>
+    <style>
+        :root { --primary: #222; --accent: #007bff; --theory-color: #ff0000; --bg: #ffffff; --paused-color: #f39c12; }
+        body { font-family: 'Inter', system-ui, sans-serif; background: var(--bg); color: var(--primary); margin: 0; padding: 20px; display: flex; justify-content: center; }
+        .wrapper { max-width: 1150px; width: 100%; }
+        
+        header { border-bottom: 2px solid #eee; margin-bottom: 20px; padding-bottom: 10px; }
+        h1 { margin: 0; font-size: 1.5rem; letter-spacing: -0.5px; }
+
+        .layout { display: grid; grid-template-columns: 320px 1fr; gap: 30px; }
+        
+        /* Panel boczny */
+        .controls { background: #f8f9fa; padding: 20px; border-radius: 8px; font-size: 0.9rem; border: 1px solid #eee; position: sticky; top: 20px; }
+        .control-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; margin-bottom: 5px; font-size: 0.75rem; text-transform: uppercase; color: #666; }
+        select, input { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        
+        .rng-selector { background: #eee; padding: 12px; border-radius: 4px; display: flex; flex-direction: column; gap: 8px; }
+        .rng-option { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; cursor: pointer; }
+        .rng-option input { width: auto; }
+
+        /* Status Bar */
+        .status-bar { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card { background: #f4f4f4; padding: 12px; border-radius: 4px; text-align: center; border: 1px solid transparent; transition: 0.2s; }
+        .stat-card small { display: block; font-size: 0.65rem; color: #777; margin-bottom: 4px; text-transform: uppercase; }
+        .stat-card span { font-size: 1.1rem; font-weight: bold; font-family: monospace; }
+
+        .highlight-sim { border-color: var(--accent); color: var(--accent); }
+        .highlight-theo { border-color: var(--theory-color); color: var(--theory-color); }
+        .is-paused { border-color: var(--paused-color); background: #fff9f0; color: var(--paused-color); }
+
+        /* Przyciski */
+        .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        button { padding: 12px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; text-transform: uppercase; }
+        #startBtn { background: var(--primary); color: white; grid-column: span 2; }
+        #pauseBtn { background: var(--paused-color); color: white; display: none; }
+        #resetBtn { background: #ddd; color: #333; display: none; }
+        
+        /* Wykres */
+        .canvas-wrapper { background: #fff; padding: 15px; border: 1px solid #eee; border-radius: 8px; position: relative; }
+        canvas { width: 100%; height: 400px; }
+        .legend { display: flex; justify-content: center; gap: 20px; font-size: 0.8rem; margin-top: 10px; color: #666; }
+
+        /* Tabela */
+        .results-section { margin-top: 30px; padding: 25px; background: #fff; border: 1px solid #ddd; border-radius: 8px; display: none; }
+        table { width: 100%; border-collapse: collapse; }
+        th { background: #222; color: white; padding: 12px; text-align: left; }
+        td { padding: 10px; border-bottom: 1px solid #eee; font-family: monospace; }
+        .diff-plus { color: #27ae60; }
+        .diff-minus { color: #c0392b; }
+    </style>
+</head>
+<body>
+
+<div class="wrapper">
+    <header><h1>Symulacja gry w kości</h1></header>
+
+    <div class="layout">
+        <aside class="controls">
+            <div class="control-group">
+                <label>Liczba i Rodzaj Kości</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="number" id="diceCount" value="3" min="1">
+                    <select id="diceType">
+                        <option value="4">k4</option><option value="6" selected>k6</option>
+                        <option value="8">k8</option><option value="10">k10</option>
+                        <option value="12">k12</option><option value="20">k20</option>
+                    </select>
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Punktacja</label>
+                <select id="scoreMode">
+                    <option value="max">Maksimum z zestawu</option>
+                    <option value="avg">Średnia z kości</option>
+                </select>
+            </div>
+            <div class="control-group">
+                <label>Liczba powtórzeń</label>
+                <input type="number" id="totalRolls" value="1000" step="500">
+            </div>
+            <div class="control-group">
+                <label>Generator (RNG)</label>
+                <div class="rng-selector">
+                    <label class="rng-option"><input type="radio" name="rngType" value="standard" checked> Standard</label>
+                    <label class="rng-option"><input type="radio" name="rngType" value="crypto"> Kryptograficzny</label>
+                    <label class="rng-option"><input type="radio" name="rngType" value="seeded"> Z ziarnem (Seed)</label>
+                    <input type="text" id="seedInput" placeholder="Ziarno...">
+                </div>
+            </div>
+            <div class="control-group">
+                <label>Tempo symulacji</label>
+                <select id="speed">
+                    <option value="400">Bardzo wolno</option>
+                    <option value="100">Wolno</option>
+                    <option value="30" selected>Normalnie</option>
+                    <option value="0">Błyskawicznie</option>
+                </select>
+            </div>
+            <button id="startBtn">URUCHOM SYMULACJĘ</button>
+            <div class="btn-grid">
+                <button id="pauseBtn">PAUZA</button>
+                <button id="resetBtn">RESET</button>
+            </div>
+        </aside>
+
+        <main class="viz-container">
+            <div class="status-bar">
+                <div class="stat-card highlight-sim">
+                    <small>Średnia Symulacji</small>
+                    <span id="avgSim">-</span>
+                </div>
+                <div class="stat-card highlight-theo">
+                    <small>Teoria (Wartość E)</small>
+                    <span id="avgTheo">-</span>
+                </div>
+                <div class="stat-card" id="errorCard">
+                    <small>Błąd Standardowy (SE)</small>
+                    <span id="statSE">-</span>
+                </div>
+                <div class="stat-card" id="progressCard">
+                    <small>Postęp</small>
+                    <span id="progress">0%</span>
+                </div>
+            </div>
+
+            <div class="canvas-wrapper">
+                <canvas id="chart"></canvas>
+                <div class="legend">
+                    <span><b style="color: #444;">■</b> Wyniki Symulacji</span>
+                    <span><b style="color: var(--theory-color);">▬</b> Prawdopodobieństwo Teor.</span>
+                </div>
+            </div>
+
+            <section id="resultsSection" class="results-section">
+                <h3>Szczegółowa Tabela Wyników</h3>
+                <div id="tableContainer"></div>
+            </section>
+        </main>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('chart');
+    const ctx = canvas.getContext('2d');
+    let isRunning = false, isPaused = false, currentStep = 0;
+    let stats = { counts: {}, sum: 0, sumSq: 0, theory: {}, ev: 0 };
+
+    function getRNG() {
+        const type = document.querySelector('input[name="rngType"]:checked').value;
+        if (type === 'seeded') {
+            let seed = 0; const str = document.getElementById('seedInput').value || "123";
+            for(let i=0; i<str.length; i++) seed = Math.imul(31, seed) + str.charCodeAt(i) | 0;
+            return () => { seed |= 0; seed = seed + 0x9e3779b9 | 0; let t = seed ^ seed >>> 16; t = Math.imul(t, 0x21f0aaad); t = t ^ t >>> 15; t = Math.imul(t, 0x735a2d97); return ((t = t ^ t >>> 15) >>> 0) / 4294967296; };
+        }
+        if (type === 'crypto') return () => window.crypto.getRandomValues(new Uint32Array(1))[0] / 4294967296;
+        return Math.random;
+    }
+
+    function calcMath(sides, n, mode) {
+        let ev = 0, theory = {};
+        if (mode === 'max') {
+            for(let i=1; i<=sides; i++) {
+                const p = Math.pow(i/sides, n) - Math.pow((i-1)/sides, n);
+                theory[i] = p; ev += i * p;
+            }
+        } else {
+            ev = (1 + sides) / 2;
+        }
+        return { ev, theory };
+    }
+
+    function draw(counts, theory, totalSteps) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        const padL = 60, padR = 20, padT = 30, padB = 40;
+        const w = canvas.width - padL - padR, h = canvas.height - padT - padB;
+        
+        const keys = Object.keys(theory).length ? Object.keys(theory) : Object.keys(counts).sort((a,b)=>a-b);
+        const maxProb = Math.max(...Object.values(theory), ...Object.values(counts).map(v => v/totalSteps), 0.1) * 1.2;
+
+        // Oś Y
+        ctx.strokeStyle = "#eee"; ctx.fillStyle = "#999"; ctx.font = "10px sans-serif"; ctx.textAlign = "right";
+        for(let i=0; i<=5; i++) {
+            const y = h + padT - (i/5)*h;
+            ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(padL+w, y); ctx.stroke();
+            ctx.fillText(((i/5)*maxProb*100).toFixed(0) + "%", padL-10, y+3);
+        }
+
+        const barW = w / keys.length;
+        keys.forEach((key, i) => {
+            const x = padL + i * barW;
+            const simVal = (counts[key] || 0) / totalSteps;
+            const simH = (simVal / maxProb) * h;
+            
+            ctx.fillStyle = isPaused ? "#bbb" : "#444";
+            ctx.fillRect(x + 5, h + padT - simH, barW - 10, simH);
+
+            if (theory[key]) {
+                const tH = (theory[key] / maxProb) * h;
+                ctx.strokeStyle = "#ff0000"; ctx.lineWidth = 5;
+                ctx.beginPath(); ctx.moveTo(x + 2, h + padT - tH); ctx.lineTo(x + barW - 2, h + padT - tH); ctx.stroke();
+            }
+            ctx.fillStyle = "#333"; ctx.textAlign = "center";
+            if(keys.length < 25 || i % 2 === 0) ctx.fillText(key, x + barW/2, h + padT + 20);
+        });
+    }
+
+    async function run() {
+        const sides = parseInt(document.getElementById('diceType').value), n = parseInt(document.getElementById('diceCount').value);
+        const maxR = parseInt(document.getElementById('totalRolls').value), mode = document.getElementById('scoreMode').value;
+        const rng = getRNG();
+
+        const math = calcMath(sides, n, mode);
+        stats.theory = math.theory; stats.ev = math.ev;
+        document.getElementById('avgTheo').innerText = stats.ev.toFixed(4);
+        toggleInputs(true);
+
+        while (currentStep < maxR && isRunning) {
+            if (isPaused) { await new Promise(r => setTimeout(r, 100)); continue; }
+
+            currentStep++;
+            let rolls = Array.from({length: n}, () => Math.floor(rng() * sides) + 1);
+            let res = mode === 'max' ? Math.max(...rolls) : (rolls.reduce((a,b)=>a+b)/n).toFixed(1);
+            let val = parseFloat(res);
+            
+            stats.counts[res] = (stats.counts[res] || 0) + 1;
+            stats.sum += val;
+            stats.sumSq += val * val;
+
+            const speed = parseInt(document.getElementById('speed').value);
+            if (speed > 0 || currentStep % 25 === 0 || currentStep === maxR) {
+                const mean = stats.sum / currentStep;
+                const variance = (stats.sumSq / currentStep) - (mean * mean);
+                const sd = Math.sqrt(Math.max(0, variance));
+                // OBLICZANIE SE: SD / pierwiastek z N
+                const se = sd / Math.sqrt(currentStep);
+
+                document.getElementById('avgSim').innerText = mean.toFixed(4);
+                document.getElementById('statSE').innerText = se.toFixed(4);
+                document.getElementById('progress').innerText = Math.round(currentStep/maxR*100) + "%";
+                draw(stats.counts, stats.theory, currentStep);
+                if (speed > 0) await new Promise(r => setTimeout(r, speed));
+            }
+        }
+        if (currentStep >= maxR) finalize(maxR);
+    }
+
+    function finalize(total) {
+        isRunning = false;
+        document.getElementById('resultsSection').style.display = 'block';
+        let html = `<table><tr><th>Wynik</th><th>Rzuty</th><th>Symulacja</th><th>Teoria</th><th>Różnica (p.p.)</th></tr>`;
+        const keys = Object.keys(stats.theory).length ? Object.keys(stats.theory) : Object.keys(stats.counts).sort((a,b)=>a-b);
+        keys.forEach(k => {
+            const sim = (stats.counts[k] || 0) / total * 100;
+            const theo = (stats.theory[k] || 0) * 100;
+            const diff = sim - theo;
+            html += `<tr><td><b>${k}</b></td><td>${stats.counts[k] || 0}</td><td>${sim.toFixed(2)}%</td><td>${theo ? theo.toFixed(2)+'%' : '-'}</td><td class="${diff >= 0 ? 'diff-plus' : 'diff-minus'}">${theo ? (diff > 0 ? '+' : '') + diff.toFixed(2) + '%' : '-'}</td></tr>`;
+        });
+        document.getElementById('tableContainer').innerHTML = html + `</table>`;
+        document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function toggleInputs(disabled) {
+        ['diceCount', 'diceType', 'scoreMode', 'totalRolls', 'seedInput'].forEach(id => document.getElementById(id).disabled = disabled);
+        document.getElementById('startBtn').style.display = disabled ? 'none' : 'block';
+        document.getElementById('pauseBtn').style.display = disabled ? 'block' : 'none';
+        document.getElementById('resetBtn').style.display = disabled ? 'block' : 'none';
+    }
+
+    document.getElementById('startBtn').onclick = () => {
+        canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight;
+        isRunning = true; isPaused = false; currentStep = 0;
+        stats.counts = {}; stats.sum = 0; stats.sumSq = 0;
+        document.getElementById('resultsSection').style.display = 'none';
+        document.getElementById('progressCard').classList.remove('is-paused');
+        run();
+    };
+
+    document.getElementById('pauseBtn').onclick = function() {
+        isPaused = !isPaused;
+        this.innerText = isPaused ? "WZNÓW" : "PAUZA";
+        const pc = document.getElementById('progressCard');
+        if (isPaused) pc.classList.add('is-paused'); else pc.classList.remove('is-paused');
+    };
+
+    document.getElementById('resetBtn').onclick = () => location.reload();
+</script>
+</body>
+</html>
